@@ -1,0 +1,51 @@
+@startuml C4_Elements
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+title "C2 диаграмма архитектуры NovaMarket"
+
+Person(buyerPerson, "Покупатель", "Человек, который покупает товары в NovaMarket")
+Person(sellerPerson, "Продавец", "Человек, который продает товары в NovaMarket")
+Container(mobileApp, "Мобильное приложение", "", "Позволяет пользователям взаимодействовать с платформой через мобильные устройства")
+Container(apiGateway, "API Gateway", "Nginx", "Обеспечивает единый вход для всех API-запросов")
+
+Rel(buyerPerson, mobileApp, "Использует")
+Rel(sellerPerson, mobileApp, "Использует")
+Rel(mobileApp, apiGateway, "Отправляет запросы к")
+
+System_Boundary(novaMarket, "Архитектура NovaMarket") {
+    Container(catalogueService, "Сервис каталога", "Spring Boot", "Управляет каталогом товаров, их описаниями и отзывами")
+    Container(orderService, "Сервис заказов", "Spring Boot", "Обрабатывает заказы и собирает информацию о них")
+    Container(paymentService, "Сервис платежей", "Spring Boot", "Обрабатывает платежи и управляет ими")
+    Container(inventoryService, "Сервис управления запасами", "Spring Boot", "Управляет запасами товаров, добавлением и резервированием")
+    Container(notificationService, "Сервис уведомлений", "Go", "Отправляет уведомления пользователям")
+    Container(shoppingCartService, "Сервис корзины", "Spring Boot", "Управляет корзиной покупок пользователей")
+    Container(deliveryService, "Сервис доставки", "Spring Boot", "Управляет доставкой товаров покупателям")
+    Container(userService, "Сервис пользователей", "NodeJS", "Управляет информацией о пользователях, регистрацией и аутентификацией")
+
+    ContainerQueue(productAddedTopic, "Топик добавления товара", "Kafka", "Используется для обмена сообщениями о добавлении/изменении товаров в каталоге")
+    ContainerQueue(orderTopic, "Топик событий заказа", "Kafka", "Используется для обмена событиями по заказу")
+    ContainerQueue(usersTopic, "Топик событий пользователей", "Kafka", "Используется для обмена событиями по пользователям")
+}
+Rel(inventoryService, productAddedTopic, "Публикует события о добавлении/изменении товаров")
+Rel(catalogueService, productAddedTopic, "Читает события о добавлении/изменении товаров")
+Rel_U(orderService, orderTopic, "Публикует событие о подтверждении заказа")
+Rel_U(shoppingCartService, orderTopic, "Читает события о подтверждении заказа", "Очищает корзину после оформления заказа")
+Rel(inventoryService, orderTopic, "Читает события о подтверждении заказа", "Резервирует товары после оформления заказа")
+Rel_U(paymentService, orderTopic, "Публикует событие об оплате заказа")
+Rel(orderService, orderTopic, "Читает события об оплате заказа")
+Rel(orderService, orderTopic, "Читает события о доставке заказа")
+Rel(deliveryService, orderTopic, "Публикует события по доставке товара")
+Rel(notificationService, orderTopic, "Читает события по доставке товара", "Отправляет уведомления продавцу, что нужно подготовить товар к отправке")
+Rel(deliveryService, orderTopic, "Читает события об оплате заказа", "Создает заявку на доставку после оплаты")
+
+Rel(userService, usersTopic, "Публикует события об изменении информации о пользователях")
+Rel(notificationService, usersTopic, "Читает события об изменении информации о пользователях")
+
+Container_Ext(paymentGateway, "Платежный шлюз", "ЮKassa", "Обрабатывает платежи и обеспечивает безопасность транзакций")
+Container_Ext(deliveryGateway, "Сторонний сервис доставки", "СДЭК", "Обеспечивает доставку товаров покупателям")
+
+Rel(apiGateway, novaMarket, "Распределяет запросы к сервисам")
+Rel(paymentService, paymentGateway, "Отправляет платежные запросы к", "HTTPS")
+Rel(paymentGateway, paymentService, "Получает обновления о платежах", "HTTPS Webhook")
+Rel(deliveryService, deliveryGateway, "Отправляет запросы на доставку к", "HTTPS")
+Rel(deliveryGateway, deliveryService, "Получает обновления о доставке", "HTTPS Webhook")
+@enduml

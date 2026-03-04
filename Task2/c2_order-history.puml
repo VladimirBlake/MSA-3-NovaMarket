@@ -1,0 +1,31 @@
+@startuml C4_Elements
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+title "C2 диаграмма обновленной архитектуры NovaMarket (по заказам)"
+
+System_Boundary(novaMarket, "Backend Архитектура NovaMarket (фрагмент)") {
+    Container(orderService, "Сервис заказов", "Spring Boot", "Обрабатывает заказы и собирает информацию о них")
+    Container(paymentService, "Сервис платежей", "Spring Boot", "Обрабатывает платежи и управляет ими")
+    Container(inventoryService, "Сервис управления запасами", "Spring Boot", "Управляет запасами товаров, добавлением и резервированием")
+    Container(deliveryService, "Сервис доставки", "Spring Boot", "Управляет доставкой товаров покупателям")
+    ContainerDb(s3, "Чеки по заказам", "S3-совместимое хранилище", "Хранит чеки по заказам в виде файлов")
+    Container(orderHistoryService, "Сервис истории заказов", "Spring Boot", "Агрегирует данные о заказах, опираясь на события")
+    ContainerDb(orderHistoryDB, "База данных истории заказов", "MongoDB", "Денормализованная Read БД для истории заказов")
+
+    ContainerQueue(orderTopic, "Топик событий заказа", "Kafka", "Используется для обмена событиями по заказу")
+}
+
+Container(mobileApp, "Мобильное приложение", "", "Позволяет пользователям взаимодействовать с платформой через мобильные устройства")
+Rel(orderService, orderTopic, "Публикует событие о подтверждении заказа")
+Rel_U(inventoryService, orderTopic, "Читает события о подтверждении заказа", "Резервирует товары после оформления заказа")
+Rel_U(paymentService, orderTopic, "Публикует событие об оплате заказа")
+Rel(orderService, orderTopic, "Читает события об оплате заказа")
+Rel(orderService, orderTopic, "Читает события о доставке заказа")
+Rel_U(deliveryService, orderTopic, "Публикует события по доставке товара")
+Rel(deliveryService, orderTopic, "Читает события об оплате заказа", "Создает заявку на доставку после оплаты")
+Rel(orderHistoryService, orderTopic, "Читает события по заказам", "Kafka Consumer")
+Rel(orderService, s3, "Сохраняет чеки по заказам", "REST API")
+Rel(mobileApp, orderHistoryService, "Запрашивает историю заказов", "HTTP / REST API")
+
+Rel(orderHistoryService, orderHistoryDB, "Читает и записывает данные о заказах", "JDBC")
+
+@enduml

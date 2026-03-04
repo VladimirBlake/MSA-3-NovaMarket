@@ -1,0 +1,74 @@
+@startuml
+title "Последовательность событий при оформлении заказа в NovaMarket"
+
+actor "Покупатель" as buyer
+participant "Сервис корзины" as shoppingCartService
+participant "Сервис заказов" as orderService
+participant "Сервис управления запасами" as inventoryService
+participant "Сервис платежей" as paymentService
+participant "Платежный шлюз" as paymentGateway
+participant "Сервис доставки" as deliveryService
+participant "Сторонний сервис доставки" as deliveryGateway
+participant "Сервис уведомлений" as notificationService
+
+buyer -> orderService: Оформить заказ()
+orderService -> orderService: Создать заказ()
+orderService -> inventoryService: Событие: Заказ подтвержден пользователем
+orderService -> shoppingCartService: Событие: Заказ подтвержден пользователем
+shoppingCartService -> shoppingCartService: Очистить корзину()
+alt Товары в наличии
+    inventoryService -> inventoryService: Резервировать товары()
+    inventoryService -> orderService: Событие: Товары на складе зарезервированы
+    orderService -> orderService: Обновить статус заказа()
+    inventoryService -> paymentService: Событие: Товары на складе зарезервированы
+    paymentService -> paymentGateway: Создать инвойс на оплату()
+    paymentGateway --> paymentService: Инвойс создан
+    buyer -> paymentGateway: Оплатить заказ()
+    alt Оплата успешна
+        paymentGateway -> paymentService: Webhook: Оплата прошла успешно
+        paymentService -> paymentService: Подтвердить оплату()
+        paymentService -> orderService: Событие: Оплата прошла успешно
+        orderService -> orderService: Обновить статус заказа()
+        paymentService -> deliveryService: Событие: Оплата прошла успешно
+        deliveryService -> deliveryGateway: Создать заявку на доставку()
+        deliveryGateway --> deliveryService: Заявка на доставку создана
+        deliveryService -> orderService: Событие: Заявка на доставку создана
+        orderService -> orderService: Обновить статус заказа()
+        alt Заявка одобрена службой доставки
+            deliveryGateway -> deliveryService: Webhook: Заявка на доставку одобрена
+            deliveryService -> orderService: Событие: Доставка одобрена службой доставки
+            deliveryService -> notificationService: Событие: Доставка одобрена службой доставки
+            notificationService -> notificationService: Отправить уведомление продавцу,\n что нужно подготовить \nтовар к отправке
+            orderService -> orderService: Обновить статус заказа()
+            deliveryGateway -> deliveryService: Webhook: Товар доставлен
+            deliveryService -> orderService: Событие: Товар доставлен
+            orderService -> orderService: Обновить статус заказа()
+        else Заявка отклонена службой доставки
+            deliveryGateway -> deliveryService: Webhook: Заявка на доставку отклонена
+            deliveryService -> orderService: Событие: Доставка отклонена службой доставки
+            deliveryService -> paymentService: Событие: Доставка отклонена службой доставки
+            deliveryService -> inventoryService: Событие: Доставка отклонена службой доставки
+            inventoryService -> inventoryService: Отменить резерв товаров()
+            paymentService -> paymentGateway: Запрос на возврат средств
+            paymentGateway --> paymentService: Возврат средств выполнен
+            paymentService -> orderService: Событие: Средства возвращены
+            orderService -> orderService: Отменить заказ()
+        end
+    else Оплата не удалась
+        paymentGateway -> paymentService: Webhook: Ошибка при оплате
+        paymentService -[#red]-> paymentService !!: Подтвердить оплату()
+        paymentService -> orderService: Событие: Ошибка при попытке оплаты
+        orderService -> orderService: Отменить заказ()
+        paymentService -> inventoryService: Событие: Ошибка при попытке оплаты
+        inventoryService -> inventoryService: Отменить резерв товаров()
+        inventoryService -> orderService: Событие: Резервация товаров отменена
+    end
+else Товары отсутствуют
+    inventoryService -[#red]-> inventoryService !!: Резервировать товары()
+    inventoryService -> orderService: Событие: Ошибка резервации товаров
+    orderService -> orderService: Отменить заказ()
+end
+
+
+
+@enduml
